@@ -1,0 +1,298 @@
+---
+title: "Movie Success Analysis"
+author: "<center> "Ethan Dass" <center>"
+date: "<center> "4/11/2020" <center>"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+<style type="text/css">
+h1.title {
+font-size: 40px;
+text-align: center;
+}
+h4.author {
+font-size: 40px;
+text-align: center;
+}
+</style>
+
+## Background and Introduction
+
+The movie industry is one of the most popular industries in the world, and movie production has increased dramatically in the last decade because of the increased demand of the public. Producers spent millions of dollars on making movies, with the hope that millions of people will flock to see their film, thus resulting in a large profit. However, if a movie is not well received by the public, the film could result in a net loss for the producer, resulting in wasted time and money. There are many factors which could influence how well received the movie will be such as what genre the movie is, when it was released, what is the film rated, and other such factors. 
+
+We are interested in determining which, if any, of the factors in this data set will result in an increased audience score. We are interested in audience score because the more audience likes the movie, the more people will go and see the movie, thus resulting in a higher profit for the producer. We think that the MPAA Rating of the movie will have an impact on the audience score, with higher ratings receiving higher audience scores. We also think that the month that the movie was released will influence the rating, as people generally have different moods at different times of the year. Finally we also think that longer movies will have higher audience score because longer movies have more time to develop the plot than shorter ones.
+
+To test our hypothesis, we are going to use a data set that include movies from 1996-2011, with their associated scores, prizes won, and ratings. We will begin our analysis by performing exploratory data techniques to better understand the data. Then, we will apply a variable selection process, to simply the number of variables we need to look at. We will then apply a multiple linear regression model with audience score as the response, regressed on the other variables in the data set, and use this model to determine which variables have the biggest impact on audience score.
+
+We will then share what we have learned during the analysis with different movie producers and directors so that they can adjust their movie making to put greater emphasis on the variables that make the biggest difference, and place let importance on the variables that don't make a difference. 
+
+```{r setup, include = FALSE}
+library(tidyverse)
+library(corrplot)
+library(car)
+library(ggfortify)
+library(glmnet)
+library(bestglm)
+
+knitr::opts_chunk$set(fig.width=12, fig.height = 8)
+```
+
+```{r}
+
+```
+
+## Methods and Results
+
+We are using a data set we downloaded fromhttps://www.kaggle.com/nichen301/movie-data that contains information about over 600 movies between 1970 and 2014. We saved it as an .RData file on March 26, 2020. The following table shows the different variables contained in the data set and provides a brief description of each variable.
+
+Variable                | Description
+------------------------|-------------
+Title                   | The name of the movie
+Title Type              | The type of movie it is (documentary, feature film, or TV Movie)
+Genre                   | What genre the movie is
+Run-time                | The length (in minutes) of the movie
+MPAA Rating             | The MPAA Rating of the movie (G, PG, etc...)
+Theater Release Year    | Which year the movie was released in theaters
+Theater Release Month   | Which month the movie was released in theaters
+Theater Release Day     | Which day the movie was released in theaters
+DVD Release Year        | Which year the movie was released on DVD
+DVD Release Month       | Which month the movie was released on DVD
+DVD Release Day         | Which day the movie was released on DVD
+IMDB Rating             | The rating IMDB gave the move (0-10)
+IMDB Votes              | The number of votes IMDB gave the movie
+Critics Rating          | What critic's rated the movie on Rotten Tomatoes (Certified Fresh, Fresh, or Rotten)
+Critics Score           | The score that critics gave the movie
+Audience Rating         | What the audience rated the movie (spilled or upright)
+Best Picture Nomination | Whether or not the movie was nominated for best picture
+Best Picture Win        | Whether or not the movie won best picture
+Best Actor Win          | Whether or not a cast member in the movie won best actor award
+Best Actress Win        | Whether or not a cast member in the movie won best actress award
+Best Director Win       | Whether or not he director of the movie won the best director award
+Top 200 Box             | Whether or not the movie was win the box office top 200
+Audience Score          | The score that the audience members gave the movie (response variable)
+
+
+We begin by performing an exploratory analysis of the data first to see if we notice any trends.
+
+```{r, fig.align= 'center', fig.width = 12}
+movies <- read.csv("Movies")
+titles <- movies[ ,2]
+movies <- movies[ ,3:25] # Remove title for analysis purposes
+movies <- movies[ ,-5] # Remove studio for analysis purposes
+movies <- movies[ ,-c(8, 9, 10)] # Remove DVD dates because of NAs
+movies <- movies[ ,-12] # Remove audience rating because it is generalization of our response variable (audience score)
+
+summary(movies)
+
+#make the dates factors instead of numbers
+movies$thtr_rel_year <- as.factor(movies$thtr_rel_year)
+movies$thtr_rel_month <- as.factor(movies$thtr_rel_month)
+movies$thtr_rel_day <- as.factor(movies$thtr_rel_day)
+
+movies$runtime[334] <- 73 #looked up missing data on Wikipedia
+
+#create data set of continuous variables
+cont_variables <- data.frame( movies$audience_score, movies$runtime, movies$imdb_rating, movies$imdb_num_votes, movies$critics_score)
+names(cont_variables) <- c("audience_score", "runtime", "imdb_rating", "imdb_num_votes", "critics_score")
+plot(cont_variables)
+
+#Correlation Matrix
+corrplot(cor(cont_variables))
+
+#Title Type Box Plots
+ggplot(data = movies, mapping = aes(y = audience_score, x = title_type)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Title Type", y = "Audience Score") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  theme(axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        aspect.ratio = 1)
+
+#Genre Box Plots
+ggplot(data = movies, mapping = aes(y = audience_score, x = genre)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Genre", y = "Audience Score") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  theme(axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        aspect.ratio = 1)
+
+# Theater Release Month Box Plot
+ggplot(data = movies, mapping = aes(y = audience_score, x = thtr_rel_month)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Theater Release Month", y = "Audience Score") +
+  theme(axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        aspect.ratio = 1)
+
+#Theater Release Year Box Plot
+ggplot(data = movies, mapping = aes(y = audience_score, x = thtr_rel_year)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Theater Release Year", y = "Audience Score") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  theme(axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        aspect.ratio = 1)
+
+#Theater Release Day Box Plot
+ggplot(data = movies, mapping = aes(y = audience_score, x = thtr_rel_day)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Theater Release Day", y = "Audience Score") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  theme(axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        aspect.ratio = 1)
+
+#Best Picture Nominations Box Plot
+ggplot(data = movies, mapping = aes(y = audience_score, x = best_pic_nom)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Best Picture Nomination", y = "Audience Score") +
+  theme(axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        aspect.ratio = 1)
+
+#Best Picture Win Box Plot
+ggplot(data = movies, mapping = aes(y = audience_score, x = best_pic_win)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Best Picture Win", y = "Audience Score") +
+  theme(axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        aspect.ratio = 1)
+
+#Best Actor Win Box Plot
+ggplot(data = movies, mapping = aes(y = audience_score, x = best_actor_win)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Best Actor Win", y = "Audience Score") +
+  theme(axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        aspect.ratio = 1)
+
+#Best Actress Win Box Plot
+ggplot(data = movies, mapping = aes(y = audience_score, x = best_actress_win)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Best Actress Win", y = "Audience Score") +
+  theme(axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        aspect.ratio = 1)
+
+#Best Director Win Box Plot
+ggplot(data = movies, mapping = aes(y = audience_score, x = best_dir_win)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Best Director Win", y = "Audience Score") +
+  theme(axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        aspect.ratio = 1)
+
+#Top 200 Office Box Box Plot
+ggplot(data = movies, mapping = aes(y = audience_score, x = top200_box)) +
+  geom_boxplot() +
+  theme_bw() +
+  labs(x = "Top 200 Box Office", y = "Audience Score") +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1)) +
+  theme(axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        aspect.ratio = 1)
+
+
+# Critic Rating and Score
+ggplot(data = movies, mapping = aes(y = audience_score, x = critics_score, color = critics_rating)) +
+  geom_point() +
+  theme_bw() +
+  labs(x = "Critic Score", y = "Audience Score", color = "Critic Rating") +
+  theme(axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size = 15),
+        axis.text = element_text(size = 15),
+        legend.text = element_text(size = 15),
+        legend.title = element_text(size = 15),
+        aspect.ratio = 1)
+```
+
+From our exploration of the data set, we found that a lot of variables have almost no obvious correlation with the audience votes. Variables such as release date, if an actor or actress won best actor/actress award, the length of the movie, and others don't have an obvious impact on the amount of audience votes a movie receives.
+
+Based on the scatter plots, it looks like the critic's score are a good indicator if the movie will have a high audience score as well. we are hesitant to say that it is a good predictor, because there were some movies that had low critic scores and high audience scores, so we will need to do some deeper analysis into that.
+
+The most obvious thing that we found in the exploratory analysis was that documentaries seem to have the highest audience score across all other genres and types. The box plots show that it is consistently higher than all other genres and types. The upright audience rating was also clearly above the spilled rating for audience rating, indicating that the audience rating is important as well.
+
+We found that critics score and the imdb rating were highly (positively) correlated, which makes sense that two critics would think similar things about the movie and give it a similar scores.
+
+We are now going to fit a linear model to the data set with audience score as the response variable. We will then check assumptions to make sure the model is a good fit and meets all required criteria.
+
+```{r}
+lm.movies <- lm(audience_score ~ ., data = movies)
+summary(lm.movies)
+
+# Check for linearity using Fitted vs. Residual Plot
+autoplot(lm.movies, which = 1, ncol = 1, nrow = 1)
+
+# Check for independence
+# Data was collected from random sample
+
+# Check for residuals normally distributed around 0 using normal probability plot
+autoplot(lm.movies, which = 2, ncol = 1, nrow = 1)
+
+# Check for equal variance (homoscedastic) using Residual vs. Fitted Values
+autoplot(lm.movies, which = 1, ncol = 1, nrow = 1)
+
+# Check for no influential points or outliers using DFFITS
+movies.dffits <- data.frame("dffits" = dffits(lm.movies))
+movies.dffits$obs <- 1:length(movies$audience_score)
+
+ggplot(data = movies.dffits) +
+  geom_point(mapping = aes(x = obs, y = abs(dffits))) +
+  geom_hline(mapping = aes(yintercept = 2 * sqrt(20 / length(obs))), color = "red", linetype = "dashed") +
+  theme_bw() +
+  theme(aspect.ratio = 1)
+
+# Check multicolinearity using variance inflation factors
+vif(lm.movies)
+```
+
+Upon checking the assumptions for the model, there are a few assumptions that aren't met. The Residuals vs. Fitted plot shows that the assumption of linearity is met, but there is an hour glass pattern in the plot that may indicate that we don't have equal variance throughout the data. However, the variance is center at zero and follows a normal distribution, as shown by the normal probability plot. We will need to look at a Box Cox plot to see if we should transform the audience score.
+
+The assumptions of independence is met since the data is from a random sample of movies. The DFFITS plots also shows that there are no outliers or influential points that cause us any major concern. A major cause for concern is that we have an issue with multicolinearity, which we expected from our exploratory analysis.
+
+Since the assumptions are not met with this model, we will perform a variable selection procedure to eliminate the problem with multicolinearity. We will also use Box Cox to transform the response variable (audience score) to provide equal variance throughout the data set.
+
+```{r}
+# Variable selection with removed theater release date because the bestglm function can only have 15 variables
+movies1 <- data.frame(movies[ ,-c(5, 6, 7, 12)], movies$audience_score)
+
+varb.select1 <- bestglm(movies1, IC = "BIC", method = "exhaustive", TopModels = 10)
+summary(varb.select1$BestModel)
+
+# Variable selection with removed Best Actor/Actress and Director
+movies2 <- data.frame(movies[ ,-c(12, 16, 17, 18)], movies$audience_score)
+
+varb.select2 <- bestglm(movies2, IC = "BIC", method = "exhaustive", TopModels = 10)
+summary(varb.select2$BestModel)
+
+# Creating model with variables from variable selection
+best.lm <- lm(audience_score ~ runtime + imdb_rating + critics_rating, data = movies)
+summary(best.lm)
+
+# Box Cox Transformation
+(cox <- boxCox(best.lm))
+```
